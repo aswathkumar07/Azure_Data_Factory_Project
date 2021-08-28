@@ -1,0 +1,81 @@
+{
+	"name": "SmartFoodFoodELT",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "SmartFoodsDelimitedTextBlob",
+						"type": "DatasetReference"
+					},
+					"name": "SmartFoodsFoodStagingBlob"
+				},
+				{
+					"dataset": {
+						"referenceName": "WWISqlOLTP",
+						"type": "DatasetReference"
+					},
+					"name": "SmartFoodsFoodSQLDW"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "WWISqlOLTP",
+						"type": "DatasetReference"
+					},
+					"name": "FoodDim"
+				}
+			],
+			"transformations": [
+				{
+					"name": "FixColumnNames"
+				},
+				{
+					"name": "MD5Hash"
+				},
+				{
+					"name": "FilterCurrentRows"
+				},
+				{
+					"name": "JoinStagingToDWDim"
+				},
+				{
+					"name": "SDC2Split"
+				},
+				{
+					"name": "SelectChangedUpdate"
+				},
+				{
+					"name": "UpdateRecsBatchColumns"
+				},
+				{
+					"name": "SelectChangedInsert"
+				},
+				{
+					"name": "SelectNewInsert"
+				},
+				{
+					"name": "AllInserts"
+				},
+				{
+					"name": "SurrogateKey"
+				},
+				{
+					"name": "AddMaxFoodKey"
+				},
+				{
+					"name": "InsertRecsBatchColumns"
+				},
+				{
+					"name": "UnionInsertUpdates"
+				},
+				{
+					"name": "MarkRow"
+				}
+			],
+			"script": "parameters{\n\tMaxSurrogateKey as integer (2),\n\tBatchDt as string (\"2020-01-01\")\n}\nsource(output(\n\t\tsku as string,\n\t\tdesc as string,\n\t\tfoodGroup as string\n\t),\n\tallowSchemaDrift: true,\n\tvalidateSchema: false,\n\tignoreNoFilesFound: false,\n\trowUrlColumn: 'sourceLineage') ~> SmartFoodsFoodStagingBlob\nsource(output(\n\t\tsku as string,\n\t\tfoodKey as long,\n\t\tdesc as string,\n\t\tfoodGroup as string,\n\t\tRecInsertDt as date,\n\t\tRecStartDt as date,\n\t\tRecEndDt as date,\n\t\tRecCurrInd as boolean,\n\t\tsourceLineage as string,\n\t\tRecMd5Hash as string\n\t),\n\tallowSchemaDrift: true,\n\tvalidateSchema: false,\n\tisolationLevel: 'READ_UNCOMMITTED',\n\tformat: 'table') ~> SmartFoodsFoodSQLDW\nSmartFoodsFoodStagingBlob select(mapColumn(\n\t\tisku = sku,\n\t\tidesc = desc,\n\t\tifoodGroup = foodGroup,\n\t\tisourceLineage = sourceLineage\n\t),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> FixColumnNames\nFixColumnNames derive(iRecMd5Hash = md5(iif(isNull(ifoodGroup),'',toString(ifoodGroup)))) ~> MD5Hash\nSmartFoodsFoodSQLDW filter(isNull(RecEndDt)) ~> FilterCurrentRows\nMD5Hash, FilterCurrentRows join(isku == sku,\n\tjoinType:'left',\n\tbroadcast: 'auto')~> JoinStagingToDWDim\nJoinStagingToDWDim split(isNull(sku),\n\t!(isNull(sku)) && (iRecMd5Hash!=RecMd5Hash),\n\tdisjoint: false) ~> SDC2Split@(New, Changed)\nSDC2Split@Changed select(mapColumn(\n\t\tsku,\n\t\tfoodKey,\n\t\tdesc,\n\t\tfoodGroup,\n\t\tRecInsertDt,\n\t\tRecStartDt,\n\t\tsourceLineage,\n\t\tRecMd5Hash\n\t),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> SelectChangedUpdate\nSelectChangedUpdate derive(RecEndDt = toDate($BatchDt, 'yyyy-MM-dd'),\n\t\tRecCurrInd = false()) ~> UpdateRecsBatchColumns\nSDC2Split@Changed select(mapColumn(\n\t\tdesc = idesc,\n\t\tfoodGroup = ifoodGroup,\n\t\tsourceLineage = isourceLineage,\n\t\tRecMd5Hash = iRecMd5Hash,\n\t\tsku\n\t),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> SelectChangedInsert\nSDC2Split@New select(mapColumn(\n\t\tsku = isku,\n\t\tdesc = idesc,\n\t\tfoodGroup = ifoodGroup,\n\t\tsourceLineage = isourceLineage,\n\t\tRecMd5Hash = iRecMd5Hash\n\t),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> SelectNewInsert\nSelectNewInsert, SelectChangedInsert union(byName: true)~> AllInserts\nAllInserts keyGenerate(output(foodKey as long),\n\tstartAt: 1L) ~> SurrogateKey\nSurrogateKey derive(foodKey = foodKey+$MaxSurrogateKey) ~> AddMaxFoodKey\nAddMaxFoodKey derive(RecInsertDt = currentDate(),\n\t\tRecCurrInd = true(),\n\t\tRecStartDt = toDate($BatchDt, 'yyyy-MM-dd'),\n\t\tRecEndDt = toDate(toString(null()))) ~> InsertRecsBatchColumns\nInsertRecsBatchColumns, UpdateRecsBatchColumns union(byName: true)~> UnionInsertUpdates\nUnionInsertUpdates alterRow(updateIf(!(isNull(RecEndDt))),\n\tinsertIf(isNull(RecEndDt))) ~> MarkRow\nMarkRow sink(allowSchemaDrift: true,\n\tvalidateSchema: true,\n\tdeletable:false,\n\tinsertable:true,\n\tupdateable:true,\n\tupsertable:false,\n\tkeys:['foodKey'],\n\tformat: 'table',\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true,\n\terrorHandlingOption: 'stopOnFirstError') ~> FoodDim"
+		}
+	}
+}

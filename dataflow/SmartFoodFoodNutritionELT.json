@@ -1,0 +1,64 @@
+{
+	"name": "SmartFoodFoodNutritionELT",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "SmartFoodsDelimitedTextBlob",
+						"type": "DatasetReference"
+					},
+					"name": "SmartFoodsFoodNutrientsStagingBlob"
+				},
+				{
+					"dataset": {
+						"referenceName": "SmartFoodsDelimitedTextBlob",
+						"type": "DatasetReference"
+					},
+					"name": "SmartFoodsNutrientsStaging"
+				},
+				{
+					"dataset": {
+						"referenceName": "WWISqlOLTP",
+						"type": "DatasetReference"
+					},
+					"name": "SmartFoodsFoodSQLDW"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "WWISqlOLTP",
+						"type": "DatasetReference"
+					},
+					"name": "DBSink"
+				}
+			],
+			"transformations": [
+				{
+					"name": "FilterZeroNutrients"
+				},
+				{
+					"name": "FixColumnNames"
+				},
+				{
+					"name": "CurrentRecsOnly"
+				},
+				{
+					"name": "JoinStagingToDWDim"
+				},
+				{
+					"name": "JoinNutrients"
+				},
+				{
+					"name": "removeExtraCols"
+				},
+				{
+					"name": "InsertRecsBatchColumns"
+				}
+			],
+			"script": "parameters{\n\tBatchDt as string\n}\nsource(output(\n\t\titem_id as string,\n\t\tnut_id as string,\n\t\tnutritionValue as double\n\t),\n\tallowSchemaDrift: true,\n\tvalidateSchema: false,\n\tignoreNoFilesFound: false) ~> SmartFoodsFoodNutrientsStagingBlob\nsource(output(\n\t\tnut_id as string,\n\t\tnut_description as string,\n\t\tnut_units as string\n\t),\n\tallowSchemaDrift: true,\n\tvalidateSchema: false,\n\tignoreNoFilesFound: false) ~> SmartFoodsNutrientsStaging\nsource(output(\n\t\tsku as string,\n\t\tfoodKey as long,\n\t\tdesc as string,\n\t\tfoodGroup as string,\n\t\tRecInsertDt as date,\n\t\tRecStartDt as date,\n\t\tRecEndDt as date,\n\t\tRecCurrInd as boolean,\n\t\tsourceLineage as string,\n\t\tRecMd5Hash as string\n\t),\n\tallowSchemaDrift: false,\n\tvalidateSchema: false,\n\tisolationLevel: 'READ_UNCOMMITTED',\n\tformat: 'table') ~> SmartFoodsFoodSQLDW\nSmartFoodsFoodNutrientsStagingBlob filter(nutritionValue!=0) ~> FilterZeroNutrients\nFilterZeroNutrients select(mapColumn(\n\t\tisku = item_id,\n\t\tnutrientId = nut_id,\n\t\tnutritionValue\n\t),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> FixColumnNames\nSmartFoodsFoodSQLDW filter(isNull(RecEndDt)) ~> CurrentRecsOnly\nFixColumnNames, CurrentRecsOnly join(isku == sku,\n\tjoinType:'left',\n\tbroadcast: 'auto')~> JoinStagingToDWDim\nJoinStagingToDWDim, SmartFoodsNutrientsStaging join(nutrientId == nut_id,\n\tjoinType:'inner',\n\tbroadcast: 'auto')~> JoinNutrients\nJoinNutrients select(mapColumn(\n\t\tnutrientId,\n\t\tnutritionValue,\n\t\tfoodKey,\n\t\tnut_description,\n\t\tnut_units\n\t),\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true) ~> removeExtraCols\nremoveExtraCols derive(RecInsertDt = toDate($BatchDt, 'yyyy-MM-dd')) ~> InsertRecsBatchColumns\nInsertRecsBatchColumns sink(allowSchemaDrift: true,\n\tvalidateSchema: true,\n\tdeletable:false,\n\tinsertable:true,\n\tupdateable:false,\n\tupsertable:false,\n\ttruncate:true,\n\tformat: 'table',\n\tskipDuplicateMapInputs: true,\n\tskipDuplicateMapOutputs: true,\n\terrorHandlingOption: 'stopOnFirstError') ~> DBSink"
+		}
+	}
+}

@@ -1,0 +1,55 @@
+{
+	"name": "InitialLoadSmartFoodsCustomerELTBlobToSql",
+	"properties": {
+		"activities": [
+			{
+				"name": "LoopThroughDatesSmartFoodsCustomerELTBlobToSQL",
+				"type": "ForEach",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('dates')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "ExecuteSmartFoodsCustomerELTBlobToSql",
+							"type": "ExecutePipeline",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "SmartFoodsCustomerELTBlobToSql",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"BatchDt": {
+										"value": "@item()",
+										"type": "Expression"
+									}
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"variables": {
+			"dates": {
+				"type": "Array",
+				"defaultValue": [
+					"2020-01-03",
+					"2020-01-04",
+					"2020-01-05",
+					"2020-01-06"
+				]
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2021-08-06T03:50:13Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

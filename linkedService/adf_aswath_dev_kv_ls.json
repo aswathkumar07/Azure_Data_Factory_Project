@@ -1,0 +1,11 @@
+{
+	"name": "adf_aswath_dev_kv_ls",
+	"type": "Microsoft.DataFactory/factories/linkedservices",
+	"properties": {
+		"annotations": [],
+		"type": "AzureKeyVault",
+		"typeProperties": {
+			"baseUrl": "https://adf-aswath-dev-kv.vault.azure.net/"
+		}
+	}
+}

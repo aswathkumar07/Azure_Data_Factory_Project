@@ -1,0 +1,22 @@
+{
+	"name": "adfaswathsqld_ls",
+	"type": "Microsoft.DataFactory/factories/linkedservices",
+	"properties": {
+		"annotations": [],
+		"type": "AzureSqlDatabase",
+		"typeProperties": {
+			"connectionString": {
+				"type": "AzureKeyVaultSecret",
+				"store": {
+					"referenceName": "adf_aswath_dev_kv_ls",
+					"type": "LinkedServiceReference"
+				},
+				"secretName": "WWISqlConnection"
+			}
+		},
+		"connectVia": {
+			"referenceName": "adf-aswath-dev-ir1",
+			"type": "IntegrationRuntimeReference"
+		}
+	}
+}

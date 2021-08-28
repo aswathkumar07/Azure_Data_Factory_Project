@@ -1,0 +1,9 @@
+{
+	"name": "adf-aswath-dev-datafactory",
+	"location": "eastus",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "281fe707-9738-4611-9c63-ca219ac5fe73",
+		"tenantId": "d61ecb3b-38b1-42d5-82c4-efb2838b925c"
+	}
+}
